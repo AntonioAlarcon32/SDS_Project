@@ -2,7 +2,7 @@ from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.cli import CLI
 from mininet.log import setLogLevel
-from mininet.node import RemoteController
+from mininet.node import RemoteController, OVSSwitch
 
 
 class MyTopo(Topo):
@@ -21,11 +21,11 @@ class MyTopo(Topo):
         h8 = self.addHost('h8', ip='10.0.4.1/24') # Honeypot
         h9 = self.addHost('h9', ip='10.0.1.3/24') # Normal WS
         
-        s1 = self.addSwitch('s1') # Firewall
-        s2 = self.addSwitch('s2') # Main router
-        s3 = self.addSwitch('s3') # Employee switch
-        s4 = self.addSwitch('s4') # Monitoring switch
-        s5 = self.addSwitch('s5') # DMZ switch
+        s1 = self.addSwitch('s1', cls=OVSSwitch)     # Firewall
+        s2 = self.addSwitch('s2', cls=OVSSwitch)     # Main router
+        s3 = self.addSwitch('s3', cls=OVSSwitch)     # Employee switch
+        s4 = self.addSwitch('s4', cls=OVSSwitch)     # Monitoring switch
+        s5 = self.addSwitch('s5', cls=OVSSwitch)     # DMZ switch
         
         # Add (bidirectional) links
         self.addLink(h1, s1)
@@ -35,19 +35,46 @@ class MyTopo(Topo):
         self.addLink(s2, s4)
         self.addLink(s2, s5)
         self.addLink(s3, h2)
+        self.addLink(s3, h3)
         self.addLink(s3, h9)
         self.addLink(s4, h4)
-        self.addLink(s5, h3)
         self.addLink(s5, h5)
         self.addLink(s5, h6)
         self.addLink(s5, h7)
+
+def configure_routes(net):
+    # Assign default routes for each host
+    net.get('h1').cmd('ip route add default via 172.16.0.254')
+    net.get('h2').cmd('ip route add default via 10.0.1.254')
+    net.get('h3').cmd('ip route add default via 10.0.1.254')
+    net.get('h4').cmd('ip route add default via 10.0.2.254')
+    net.get('h5').cmd('ip route add default via 10.0.3.254')
+    net.get('h6').cmd('ip route add default via 10.0.3.254')
+    net.get('h7').cmd('ip route add default via 10.0.3.254')
+    net.get('h8').cmd('ip route add default via 10.0.4.254')
+    net.get('h9').cmd('ip route add default via 10.0.1.254')
+
+def configure_switches(net):
+    s1 = net.get('s1')
+    s2 = net.get('s2')
+    s3 = net.get('s3')
+    s4 = net.get('s4')
+    s5 = net.get('s5')
+    
+    # Set IP addresses on switch interfaces
+    s2.cmd('ifconfig s2-eth1 172.16.0.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:01')
+    s2.cmd('ifconfig s2-eth2 10.0.1.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:02')
+    s2.cmd('ifconfig s2-eth3 10.0.2.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:03')
+    s2.cmd('ifconfig s2-eth4 10.0.3.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:04')
+    s2.cmd('ifconfig s2-eth5 10.0.4.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:05')
 
 
 def run():
     topo = MyTopo()
     net = Mininet(topo=topo, controller=None)
     net.addController('c0', controller=RemoteController, ip='127.0.0.1', port=6633)
-
+    configure_routes(net)
+    configure_switches(net)
     h3 = net.get('h3')
     h3.cmd("python3 ftp.py &> /dev/null &")
 
