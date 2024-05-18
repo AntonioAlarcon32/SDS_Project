@@ -14,12 +14,14 @@ class ProjectController(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(ProjectController, self).__init__(*args, **kwargs)
+
         self.mac_to_port = {
             '0000000000000001': {'00:00:00:00:00:01': 2},
             '0000000000000003': {'00:00:00:00:00:02': 1},
             '0000000000000004': {'00:00:00:00:00:03': 1},
             '0000000000000005': {'00:00:00:00:00:04': 1}
         }
+
         self.ip_to_mac = {
             '172.16.0.254': '00:00:00:00:00:01',
             '10.0.1.254': '00:00:00:00:00:02',
@@ -27,6 +29,7 @@ class ProjectController(app_manager.RyuApp):
             '10.0.3.254': '00:00:00:00:00:04',
             '10.0.4.254': '00:00:00:00:00:05'
         }
+
         self.subnet_to_port = {
             '172.16.0.0/24': 1,
             '10.0.1.0/24': 3,
@@ -34,13 +37,14 @@ class ProjectController(app_manager.RyuApp):
             '10.0.3.0/24': 5,
             '10.0.4.0/24': 2
         }
+
         self.arp_table = {
 
         }
 
-        self.packet_buffer = {}
-
         self.router_dpid = "0000000000000002"
+
+        self.packet_buffer = {}
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -119,7 +123,27 @@ class ProjectController(app_manager.RyuApp):
             datapath.send_msg(out)
             print(f"{src_ip} requested the MAC of the switch")
             return
-    
+        if (opcode == 2 and src_ip not in self.ip_to_mac):
+            if src_ip in self.packet_buffer:
+                print("This IP has packets buffered")
+                (buf_datapath, buf_in_port, buf_eth, buf_data) = self.packet_buffer[src_ip]
+                parsed_ip = src_ip.split(".")
+                subnet = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.0/24'
+                router_ip = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.254'
+                src_mac = self.ip_to_mac[router_ip]
+                buf_out_port = self.subnet_to_port[subnet]
+                buf_actions = [
+                        parser.OFPActionSetField(eth_dst=src_mac),
+                        parser.OFPActionSetField(eth_src=src_mac),
+                        parser.OFPActionOutput(buf_out_port)
+                ]
+                out = parser.OFPPacketOut(datapath=buf_datapath, buffer_id=buf_datapath.ofproto.OFP_NO_BUFFER,
+                                              in_port=buf_in_port, actions=buf_actions, data=buf_data)
+                print("sending buffered packet")
+                buf_datapath.send_msg(out)
+                print("buffered packet sent")
+                return
+
     def send_arp_request(self, datapath, parser, in_port, dst_ip):
         parsed_ip = dst_ip.split(".")
         router_ip = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.254'
@@ -166,7 +190,6 @@ class ProjectController(app_manager.RyuApp):
             # ignore lldp packet
             return
         if eth.ethertype == ether_types.ETH_TYPE_ARP:
-            arp_pkt = pkt.get_protocol(arp.arp)
             self.handle_arp_packet(pkt, eth, datapath, ofproto, parser, in_port)
             
         

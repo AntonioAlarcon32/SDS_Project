@@ -61,13 +61,6 @@ def configure_switches(net):
     s4 = net.get('s4')
     s5 = net.get('s5')
     
-    # Set IP addresses on switch interfaces
-    s2.cmd('ifconfig s2-eth1 172.16.0.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:01')
-    s2.cmd('ifconfig s2-eth2 10.0.1.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:02')
-    s2.cmd('ifconfig s2-eth3 10.0.2.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:03')
-    s2.cmd('ifconfig s2-eth4 10.0.3.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:04')
-    s2.cmd('ifconfig s2-eth5 10.0.4.254 netmask 255.255.255.0 hw ether 00:00:00:00:00:05')
-
 
 def run():
     topo = MyTopo()
