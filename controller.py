@@ -40,6 +40,8 @@ class ProjectController(app_manager.RyuApp):
 
         self.packet_buffer = {}
 
+        self.router_dpid = "0000000000000002"
+
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
         datapath = ev.msg.datapath
@@ -133,7 +135,6 @@ class ProjectController(app_manager.RyuApp):
                         src_ip=router_ip,
                         dst_mac='00:00:00:00:00:00',
                         dst_ip=dst_ip)
-        print(arp_req)
         pkt.add_protocol(ether_frame)
         pkt.add_protocol(arp_req)
         pkt.serialize()
@@ -144,6 +145,7 @@ class ProjectController(app_manager.RyuApp):
                                         actions=actions,
                                         data=pkt.data)
         datapath.send_msg(out)
+        return
     
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -166,33 +168,16 @@ class ProjectController(app_manager.RyuApp):
         if eth.ethertype == ether_types.ETH_TYPE_ARP:
             arp_pkt = pkt.get_protocol(arp.arp)
             self.handle_arp_packet(pkt, eth, datapath, ofproto, parser, in_port)
-            if arp_pkt.src_ip in self.packet_buffer and arp_pkt.opcode == 2:
-                print(f"IP {arp_pkt.src_ip} has packets buffered")
-                (datapath, in_port, eth, data) = self.packet_buffer[arp_pkt.src_ip]
-                parsed_ip = arp_pkt.src_ip.split(".")
-                subnet = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.0/24'
-                router_ip = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.254'
-                src_mac = self.ip_to_mac[router_ip]
-                out_port = self.subnet_to_port[subnet]
-                actions = [
-                    parser.OFPActionSetField(eth_dst=src_mac),
-                    parser.OFPActionSetField(eth_src=src_mac),
-                    parser.OFPActionOutput(out_port)
-                ]
-                out = parser.OFPPacketOut(datapath=datapath, buffer_id=datapath.ofproto.OFP_NO_BUFFER,
-                                          in_port=in_port, actions=actions, data=data)
-                print("sending buffered packet")
-                datapath.send_msg(out)
-                print("buffered packet sent")
+            
         
         dst = eth.dst
         src = eth.src
 
         dpid = format(datapath.id, "d").zfill(16)
-        if dpid == "0000000000000002" and eth.ethertype == ether_types.ETH_TYPE_IP:
+        if dpid == self.router_dpid and eth.ethertype == ether_types.ETH_TYPE_IP:
             ip_pkt = pkt.get_protocol(ipv4.ipv4)
-            print(ip_pkt)
             if (ip_pkt.dst in self.arp_table):
+                print("This packet has a ARP entry")
                 dst_mac = self.arp_table[ip_pkt.dst]
                 parsed_ip = ip_pkt.dst.split(".")
                 subnet = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.0/24'
@@ -217,6 +202,7 @@ class ProjectController(app_manager.RyuApp):
                 self.packet_buffer[ip_pkt.dst] = (datapath, in_port, eth, msg.data)
                 print(f"Saved packet in buffer for {ip_pkt.dst}")
                 self.send_arp_request(datapath, parser, in_port, ip_pkt.dst)
+                return
 
         self.mac_to_port.setdefault(dpid, {})
 
