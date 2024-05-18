@@ -8,6 +8,7 @@ from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
 from ryu.lib.packet import arp
 from ryu.lib.packet import ipv4
+from ryu.lib.packet import udp
 
 class ProjectController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -42,6 +43,10 @@ class ProjectController(app_manager.RyuApp):
 
         }
 
+        self.datapaths = {
+
+        }
+
         self.router_dpid = "0000000000000002"
 
         self.packet_buffer = {}
@@ -51,6 +56,7 @@ class ProjectController(app_manager.RyuApp):
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
+        self.datapaths[datapath.id] = datapath
 
         # install table-miss flow entry
         #
@@ -63,6 +69,15 @@ class ProjectController(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
+
+        #Default rule to communicate with the controller
+        match = parser.OFPMatch(
+            eth_type=ether_types.ETH_TYPE_IP,
+            ipv4_dst="10.100.100.100"
+        )
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
+                                          ofproto.OFPCML_NO_BUFFER)]
+        self.add_flow(datapath, 100, match, actions)
 
         # Add initial flow entries from mac_to_port table
         dpid = format(datapath.id, "d").zfill(16)
@@ -199,6 +214,21 @@ class ProjectController(app_manager.RyuApp):
         dpid = format(datapath.id, "d").zfill(16)
         if dpid == self.router_dpid and eth.ethertype == ether_types.ETH_TYPE_IP:
             ip_pkt = pkt.get_protocol(ipv4.ipv4)
+            if ip_pkt.dst == '10.100.100.100':
+                print("Controller action received")
+                udp_pkt = pkt.get_protocols(udp.udp)[0]
+                udp_payload = pkt.protocols[-1]  # Extract the payload (text string)
+                if isinstance(udp_payload, bytes):
+                    text_string = udp_payload.decode('utf-8')
+                    orders = text_string.split(";")
+                    if orders[0] == "ban":
+                        print(f"Banning IP: {orders[1]}")
+                        attacker_mac = self.arp_table[orders[1]]
+                        match = parser.OFPMatch(eth_src= attacker_mac)
+                        for datapath in self.datapaths.values():
+                            self.add_flow(datapath, 100, match, [])
+                        print(f"User banned, MAC:{attacker_mac}")
+                return
             if (ip_pkt.dst in self.arp_table):
                 print("This packet has a ARP entry")
                 dst_mac = self.arp_table[ip_pkt.dst]
