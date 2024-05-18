@@ -37,4 +37,4 @@ class Webserver:
 
 if __name__ == "__main__":
     server: Webserver = Webserver()
-    server.start("127.0.0.1", 80)
+    server.start("0.0.0.0", 80)

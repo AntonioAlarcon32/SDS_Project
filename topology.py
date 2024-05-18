@@ -70,6 +70,8 @@ def run():
     configure_switches(net)
     h3 = net.get('h3')
     h3.cmd("python3 ftp.py &> /dev/null &")
+    h5 = net.get('h5')
+    h5.cmd("python3 webserver.py &> /dev/null &")
 
     net.start()
 
