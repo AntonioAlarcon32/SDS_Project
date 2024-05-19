@@ -72,6 +72,8 @@ def run():
     h3.cmd("python3 ftp.py &> /dev/null &")
     h5 = net.get('h5')
     h5.cmd("python3 webserver.py &> /dev/null &")
+    h6 = net.get('h6')
+    h6.cmd("python3 dbapi.py &> /dev/null &")
 
     net.start()
 

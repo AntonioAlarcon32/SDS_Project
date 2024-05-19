@@ -1,13 +1,16 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 import uvicorn
+import requests
 
 class Webserver:
 
     app: FastAPI
+    dbApiUrl: str
 
     def __init__(self):
         self.app = FastAPI()
+        self.dbApiUrl = "http://10.0.3.2:80"
         self.add_routes()
     
     def add_routes(self):
@@ -19,15 +22,16 @@ class Webserver:
         async def getHelloWorld():
             return {"message": "Hello World"}
         
-        @self.app.get("/hello-world-html", response_class=HTMLResponse)
+        @self.app.get("/string-from-database", response_class=HTMLResponse)
         async def getAnHtml():
-            return """
+            stringFromDatabase: str = requests.get(url = self.dbApiUrl + "/database-string").text
+            return f"""
             <html>
                 <head>
-                    <title>Some HTML in here</title>
+                    <title>Response from database</title>
                 </head>
                 <body>
-                    <h1>I'm tired, boss</h1>
+                    <h1>{stringFromDatabase}</h1>
                 </body>
             </html>
             """

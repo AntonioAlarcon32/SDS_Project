@@ -8,19 +8,17 @@ import uvicorn
 class Database:
 
     mongoClient: mongomock.MongoClient
+    collection: mongomock.Collection
+    field: str = "stringField"
 
     def __init__(self):
         self.mongoClient = mongomock.MongoClient()
-
-    def initializeDatabase(self):
         db = self.mongoClient['db']
-        collection = db['mycollection']
-        collection.insert_one({'stringField': 'StringLocatedInDatabase'})
+        self.collection = db['onlyCollection']
+        self.collection.insert_one({self.field: 'StringLocatedInDatabase'})
     
     def getString(self) -> str:
-        db = self.mongoClient['db']
-        collection = db['mycollection']
-        return collection.find_one()
+        return self.collection.find_one()[self.field]
 
 
 class Api:
@@ -34,12 +32,12 @@ class Api:
         self.add_routes()
     
     def add_routes(self):
-        @self.app.get("/hardcodedString")
+        @self.app.get("/hardcoded-string")
         async def getHardcodedString():
             return "AHarcodedString"
         
-        @self.app.get("/databaseString")
-        async def getHelloWorld():
+        @self.app.get("/database-string")
+        async def getStringFromDatabase():
             return self.database.getString()
 
     def start(self, host: str, port: int):
