@@ -10,9 +10,16 @@ from ryu.lib.packet import arp
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import udp
 from ryu.lib.packet import tcp
+from ryu.app.wsgi import ControllerBase, route
+from webob import Response
+from ryu.app.wsgi import WSGIApplication
+from ryu.controller import dpset
+
 
 class ProjectController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+    _CONTEXTS = {'dpset': dpset.DPSet,
+                 'wsgi': WSGIApplication}
 
     def __init__(self, *args, **kwargs):
         super(ProjectController, self).__init__(*args, **kwargs)
@@ -54,6 +61,27 @@ class ProjectController(app_manager.RyuApp):
         self.firewall_dpid = "0000000000000001"
 
         self.packet_buffer = {}
+
+        
+
+        self.wsgi = kwargs['wsgi']
+        self.data = {}
+        self.data['custom_app'] = self
+        self.datapaths = {}
+        mapper = self.wsgi.mapper
+        wsgi_app = self.wsgi
+        mapper.connect('activate-honeypot', '/activate-honeypot',
+                       controller=CustomController, action='activate_honeypot',
+                       conditions=dict(method=['POST']))
+        mapper.connect('deactivate-honeypot', '/deactivate-honeypot',
+                       controller=CustomController, action='deactivate_honeypot',
+                       conditions=dict(method=['POST']))
+
+        mapper.connect('test', '/test',
+                       controller=CustomController, action='test_function',
+                       conditions=dict(method=['GET']))
+        wsgi_app.registory['CustomController'] = self.data
+
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -357,4 +385,93 @@ class ProjectController(app_manager.RyuApp):
                    parser.OFPActionOutput(in_port)]
         self.add_flow(datapath, 500, match, actions)
         print("Firewall configured")
+
+
+
+
+class CustomController(ControllerBase):
+
+    webserver_ip = '10.0.3.1'
+    dns_ip = '10.0.3.3'
+    honeypot_ip = '10.0.4.1'
+    router_out_port_to_honeypot = 2
+    public_ip = "80.80.80.80"
+
+    def __init__(self, req, link, data, **config):
+        super(CustomController, self).__init__(req, link, data, **config)
+        self.custom_app = data['custom_app']
+
+    @route('activate-honeypot', '/activate-honeypot', methods=['POST'])
+    def activate_honeypot(self, req, **kwargs):
+        custom_app = self.custom_app
+        datapath_id = int(req.json["datapath_id"])
+        print(datapath_id)
+        datapath = custom_app.datapaths.get(datapath_id)
+        if datapath is None:
+            return Response(content_type='application/json',
+                            body=b'{"error": "Datapath not found"}',
+                            status=404)
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        actions = [parser.OFPActionOutput(self.router_out_port_to_honeypot), parser.OFPActionSetField(ipv4_dst=self.honeypot_ip)]
+        # Redirect packets headed to the webserver
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst = self.webserver_ip)
+        self.add_flow(datapath=datapath, priority=1000, match=match, buffer_id=[], actions=actions)
+        # Redirect packets headed to the dns
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=self.public_ip, ipv4_dst = self.dns_ip)
+        self.add_flow(datapath=datapath, priority=1000, match=match, buffer_id=[], actions=actions)
+        return Response(content_type='application/json',
+                        body=b'{"message": "Packets from the webserver and the DNS have been redirected to the honeypot"}')
+
+    @route('deactivate-honeypot', '/deactivate-honeypot', methods=['POST'])
+    def deactivate_honeypot(self, req, **kwargs):
+        custom_app = self.custom_app
+        datapath_id = int(req.json['datapath_id'])
+        datapath = custom_app.datapaths.get(datapath_id)
+        if datapath is None:
+            return Response(content_type='application/json',
+                            body=b'{"error": "Datapath not found"}',
+                            status=404)
+        parser = datapath.ofproto_parser
+        # No longer redirect packets headed to the webserver to the honeypot
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst = self.webserver_ip)
+        self.delete_flow(datapath, match)
+        # No longer edirect packets headed to the dns to the honeypot
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=self.public_ip, ipv4_dst = self.dns_ip)
+        self.delete_flow(datapath, match)
+        return Response(content_type='application/json',
+                        body=b'{"message": "Packets from the webserver and the DNS are no longer redirected to the honeypot"}')
+
+    @route('test', '/test', methods=['GET'])
+    def test_function(self, req, **kwargs):
+        custom_app = self.custom_app
+        body = b'{"message": "This ryu controller is reachable"}'
+        return Response(content_type='application/json', body=body)
+    
+
+    def add_flow(self, datapath, priority, match, actions, buffer_id=None):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+        if buffer_id:
+            mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
+                                    priority=priority, match=match,
+                                    instructions=inst)
+        else:
+            mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
+                                    match=match, instructions=inst)
+        datapath.send_msg(mod)
+    
+    def delete_flow(self, datapath, match):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        mod = parser.OFPFlowMod(
+            datapath=datapath,
+            command=ofproto.OFPFC_DELETE,
+            out_port=ofproto.OFPP_ANY,
+            out_group=ofproto.OFPG_ANY,
+            match=match
+        )
+        datapath.send_msg(mod)
         
