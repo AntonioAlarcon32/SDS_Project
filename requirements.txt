@@ -1,3 +1,4 @@
 pyftpdlib
 FastAPI
 mongomock
+dnserver

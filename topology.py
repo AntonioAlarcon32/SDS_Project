@@ -74,6 +74,8 @@ def run():
     h5.cmd("python3 webserver.py &> /dev/null &")
     h6 = net.get('h6')
     h6.cmd("python3 dbapi.py &> /dev/null &")
+    h7 = net.get('h7')
+    h7.cmd("python3 dnsserver.py &> /dev/null &")
 
     net.start()
 
