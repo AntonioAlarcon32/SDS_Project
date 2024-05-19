@@ -116,7 +116,6 @@ class ProjectController(app_manager.RyuApp):
         if src_ip not in self.arp_table and src_ip not in self.ip_to_mac: #Save IP to ARP Table
             print(f"{src_ip} not saved, saving in ARP table")
             self.arp_table[src_ip] = src_mac
-            print(self.arp_table)
             return
         if dst_ip in self.ip_to_mac and opcode == 1:
             reply_mac = self.ip_to_mac[dst_ip]
@@ -142,23 +141,24 @@ class ProjectController(app_manager.RyuApp):
             return
         if (opcode == 2 and src_ip not in self.ip_to_mac):
             if src_ip in self.packet_buffer:
-                print("This IP has packets buffered")
+                print(f"{src_ip} has packets buffered")
                 (buf_datapath, buf_in_port, buf_eth, buf_data) = self.packet_buffer[src_ip]
                 parsed_ip = src_ip.split(".")
                 subnet = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.0/24'
                 router_ip = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.254'
                 src_mac = self.ip_to_mac[router_ip]
+                dst_mac = self.arp_table[src_ip]
                 buf_out_port = self.subnet_to_port[subnet]
                 buf_actions = [
-                        parser.OFPActionSetField(eth_dst=src_mac),
+                        parser.OFPActionSetField(eth_dst=dst_mac),
                         parser.OFPActionSetField(eth_src=src_mac),
                         parser.OFPActionOutput(buf_out_port)
                 ]
                 out = parser.OFPPacketOut(datapath=buf_datapath, buffer_id=buf_datapath.ofproto.OFP_NO_BUFFER,
                                               in_port=buf_in_port, actions=buf_actions, data=buf_data)
-                print("sending buffered packet")
                 buf_datapath.send_msg(out)
-                print("buffered packet sent")
+                print(f"{src_ip} buffered packets sent")
+                del self.packet_buffer[src_ip]
                 return
 
     def send_arp_request(self, datapath, parser, in_port, dst_ip):
@@ -217,7 +217,7 @@ class ProjectController(app_manager.RyuApp):
         if dpid == self.router_dpid and eth.ethertype == ether_types.ETH_TYPE_IP:
             ip_pkt = pkt.get_protocol(ipv4.ipv4)
             if ip_pkt.dst == '10.100.100.100':
-                print("Controller action received")
+                print(f"Controller action received from {ip_pkt.src}")
                 udp_pkt = pkt.get_protocols(udp.udp)[0]
                 udp_payload = pkt.protocols[-1]  # Extract the payload (text string)
                 if isinstance(udp_payload, bytes):
@@ -232,7 +232,7 @@ class ProjectController(app_manager.RyuApp):
                         print(f"User banned, MAC:{attacker_mac}")
                 return
             if (ip_pkt.dst in self.arp_table):
-                print("This packet has a ARP entry")
+                print(f"IP {ip_pkt.dst} has a ARP table entry")
                 dst_mac = self.arp_table[ip_pkt.dst]
                 parsed_ip = ip_pkt.dst.split(".")
                 subnet = f'{parsed_ip[0]}.{parsed_ip[1]}.{parsed_ip[2]}.0/24'
@@ -250,10 +250,10 @@ class ProjectController(app_manager.RyuApp):
                                   in_port=in_port, actions=actions, data=data)
                 datapath.send_msg(out)
                 self.add_flow(datapath, 2, match, actions, msg.buffer_id)
-                print("installed IP Rule for host")
+                print(f"Installed IP Rule for host {ip_pkt.dst}")
                 return
             else:
-                print("not in the arp table :(")
+                print(f"{ip_pkt.dst} not in the arp table ")
                 self.packet_buffer[ip_pkt.dst] = (datapath, in_port, eth, msg.data)
                 print(f"Saved packet in buffer for {ip_pkt.dst}")
                 self.send_arp_request(datapath, parser, in_port, ip_pkt.dst)
