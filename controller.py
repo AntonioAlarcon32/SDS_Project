@@ -48,7 +48,6 @@ class ProjectController(app_manager.RyuApp):
         }
 
         self.router_dpid = "0000000000000002"
-
         self.packet_buffer = {}
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -59,12 +58,6 @@ class ProjectController(app_manager.RyuApp):
         self.datapaths[datapath.id] = datapath
 
         # install table-miss flow entry
-        #
-        # We specify NO BUFFER to max_len of the output action due to
-        # OVS bug. At this moment, if we specify a lesser number, e.g.,
-        # 128, OVS will send Packet-In with invalid buffer_id and
-        # truncated packet data. In that case, we cannot output packets
-        # correctly.  The bug has been fixed in OVS v2.1.0.
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
@@ -87,6 +80,7 @@ class ProjectController(app_manager.RyuApp):
                 actions = [parser.OFPActionOutput(port)]
                 self.add_flow(datapath, 1, match, actions)
                 print(f"Configured switch {dpid}")
+        self.restrictAccessToDatabase(parser=parser, datapath=datapath, ofproto=ofproto)
 
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
@@ -286,3 +280,17 @@ class ProjectController(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+
+
+    def restrictAccessToDatabase(self, parser, datapath, ofproto):
+        # Allow only packets from MAC webserver to MAC B
+        webservermacAddress = '00:00:00:00:00:05'
+        dbMacAddress = '00:00:00:00:00:06'
+        match = parser.OFPMatch(eth_src=webservermacAddress, eth_dst=dbMacAddress)
+        actions = [parser.OFPActionOutput(ofproto.OFPP_NORMAL)]
+        self.add_flow(datapath, 10, match, actions)
+
+        # Drop packets from any other MAC addresses to MAC B
+        match = parser.OFPMatch(eth_dst=dbMacAddress)
+        actions = []
+        self.add_flow(datapath, 9, match, actions)
