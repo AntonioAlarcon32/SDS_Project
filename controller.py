@@ -9,6 +9,7 @@ from ryu.lib.packet import ether_types
 from ryu.lib.packet import arp
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import udp
+from ryu.lib.packet import tcp
 
 class ProjectController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -47,7 +48,11 @@ class ProjectController(app_manager.RyuApp):
 
         }
 
+        self.public_ip = "80.80.80.80"
+
         self.router_dpid = "0000000000000002"
+        self.firewall_dpid = "0000000000000001"
+
         self.packet_buffer = {}
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -81,6 +86,9 @@ class ProjectController(app_manager.RyuApp):
                 self.add_flow(datapath, 1, match, actions)
                 print(f"Configured switch {dpid}")
         self.restrictAccessToDatabase(parser=parser, datapath=datapath, ofproto=ofproto)
+
+        if (dpid == self.firewall_dpid):
+            self.configure_firewall(parser=parser, datapath=datapath, ofproto=ofproto)
 
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
@@ -284,13 +292,69 @@ class ProjectController(app_manager.RyuApp):
 
     def restrictAccessToDatabase(self, parser, datapath, ofproto):
         # Allow only packets from MAC webserver to MAC B
-        webservermacAddress = '00:00:00:00:00:05'
-        dbMacAddress = '00:00:00:00:00:06'
-        match = parser.OFPMatch(eth_src=webservermacAddress, eth_dst=dbMacAddress)
+        webserver_ip = '10.0.3.1'
+        database_ip = '10.0.3.2'
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                ipv4_src=webserver_ip, ipv4_dst=database_ip)
         actions = [parser.OFPActionOutput(ofproto.OFPP_NORMAL)]
         self.add_flow(datapath, 10, match, actions)
 
         # Drop packets from any other MAC addresses to MAC B
-        match = parser.OFPMatch(eth_dst=dbMacAddress)
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst=database_ip)
         actions = []
         self.add_flow(datapath, 9, match, actions)
+    
+    def configure_firewall(self, parser, datapath, ofproto):
+        webserver_ip = '10.0.3.1'
+        dns_ip = '10.0.3.3'
+        out_port = 2
+        in_port = 1
+
+        # Drop packets that are not HTTP or DNS
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                in_port= 1)
+        actions = []
+        self.add_flow(datapath, 400, match, actions)
+        #Accept packets that are DNS
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                ip_proto=17,
+                                udp_dst=53,
+                                in_port=in_port,
+                                ipv4_dst=self.public_ip)
+
+        actions = [parser.OFPActionSetField(ipv4_dst=dns_ip),
+                   parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, 500, match, actions)
+        #Accept Packets that are HTTP
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                ip_proto=6,
+                                tcp_dst=80,
+                                in_port=in_port,
+                                ipv4_dst=self.public_ip)
+
+        actions = [parser.OFPActionSetField(ipv4_dst=webserver_ip),
+                   parser.OFPActionOutput(out_port)]
+        self.add_flow(datapath, 500, match, actions)
+        #Replace outgoing IP for DNS
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                ip_proto=17,
+                                udp_src=53,
+                                in_port=2,
+                                ipv4_src = dns_ip)
+        
+
+        actions = [parser.OFPActionSetField(ipv4_src=self.public_ip),
+                   parser.OFPActionOutput(in_port)]
+        self.add_flow(datapath, 500, match, actions)
+        #Replace outgoing IP for HTTP
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
+                                ip_proto=6,
+                                tcp_src=80,
+                                in_port=2,
+                                ipv4_src = webserver_ip)
+        
+        actions = [parser.OFPActionSetField(ipv4_src=self.public_ip),
+                   parser.OFPActionOutput(in_port)]
+        self.add_flow(datapath, 500, match, actions)
+        print("Firewall configured")
+        

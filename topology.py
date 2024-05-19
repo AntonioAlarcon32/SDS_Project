@@ -15,9 +15,9 @@ class MyTopo(Topo):
         h2 = self.addHost('h2', ip='10.0.1.2/24') # Attacker WS
         h3 = self.addHost('h3', ip='10.0.1.1/24') # FTP SERVER
         h4 = self.addHost('h4', ip='10.0.2.1/24') # Monitoring WS
-        h5 = self.addHost('h5', ip='10.0.3.1/24', mac='00:00:00:00:00:05') # Web server
-        h6 = self.addHost('h6', ip='10.0.3.2/24', mac='00:00:00:00:00:06') # Database
-        h7 = self.addHost('h7', ip='10.0.3.3/24', mac='00:00:00:00:00:07') # DNS
+        h5 = self.addHost('h5', ip='10.0.3.1/24') # Web server
+        h6 = self.addHost('h6', ip='10.0.3.2/24') # Database
+        h7 = self.addHost('h7', ip='10.0.3.3/24') # DNS
         h8 = self.addHost('h8', ip='10.0.4.1/24') # Honeypot
         h9 = self.addHost('h9', ip='10.0.1.3/24') # Normal WS
         
