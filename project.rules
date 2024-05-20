@@ -1,0 +1,54 @@
+# External ICMP Flood Detection
+alert icmp any any -> 80.80.80.80/32 any (msg:"[Priority: 1] External ICMP Flood Detected"; detection_filter:track by_src, count 100, seconds 1; sid:1000001; rev:1;)
+alert icmp any any -> 80.80.80.80/32 any (msg:"[Priority: 2] Potential External ICMP Flood Detected"; detection_filter:track by_src, count 50, seconds 1; sid:1000002; rev:1;)
+alert icmp any any -> 80.80.80.80/32 any (msg:"[Priority: 3] Suspicious External ICMP Activity"; detection_filter:track by_src, count 25, seconds 1; sid:1000003; rev:1;)
+
+# UDP Flood Detection
+alert udp any any -> 10.0.0.0/8 any (msg:"[Priority: 1] UDP Flood Detected"; detection_filter:track by_src, count 1000, seconds 3; sid:1000007; rev:1;)
+
+# SSH Connections
+log tcp any any -> 10.0.0.0/8 22 (msg:"Successful SSH Connection"; flow:to_server,established; sid:1000008; rev:1;)
+alert tcp any any -> 10.0.0.0/8 22 (msg:"[Priority: 3] Failed SSH Connection Attempt"; flags:S; detection_filter:track by_src, count 5, seconds 10; sid:1000009; rev:1;)
+alert tcp any any -> 10.0.0.0/8 22 (msg:"[Priority: 1] SSH Bruteforce Attempt Detected"; detection_filter:track by_src, count 10, seconds 60; sid:1000010; rev:1;)
+
+# UDP Port Scanning Detection
+alert udp any any -> 10.0.0.0/8 any (msg:"[Priority: 2] UDP Port Scan Detected"; detection_filter:track by_src, count 20, seconds 3; sid:1000011; rev:1;)
+
+# TCP Port Scanning Detection
+alert tcp any any -> 10.0.0.0/8 any (msg:"[Priority: 2] TCP Port Scan Detected"; flags:S; detection_filter:track by_src, count 20, seconds 3; sid:1000012; rev:1;)
+
+# DNS Tunneling Detection
+alert udp any any -> 10.0.3.3 53 (msg:"[Priority: 1] Potential DNS Tunneling Detected"; content:"|03|www|07|example|03|com"; nocase; sid:1000013; rev:1;)
+
+# DMZ Rules
+# Detect SQL Injection attempts
+alert tcp any any -> 10.0.3.1 80 (msg:"[Priority: 1] SQL Injection Attempt on Web Server"; content:"union select"; nocase; sid:1000014; rev:1;)
+# Detect XSS attempts
+alert tcp any any -> 10.0.3.1 80 (msg:"[Priority: 2] XSS Attempt on Web Server"; content:"<script>"; nocase; sid:1000015; rev:1;)
+
+# Detect unusual DNS query volumes
+alert udp any any -> 10.0.3.3 53 (msg:"[Priority: 1] High Volume DNS Queries to DNS Server"; detection_filter:track by_src, count 100, seconds 10; sid:1000016; rev:1;)
+
+# SYN Flood Detection on FTP Server
+alert tcp any any -> 10.0.1.1 80 (msg:"[Priority: 1] SYN Flood Detected on FTP Server"; flags:S; detection_filter:track by_src, count 100, seconds 1; sid:1000017; rev:1;)
+alert tcp any any -> 10.0.1.1 80 (msg:"[Priority: 2] Potential SYN Flood on FTP Server"; flags:S; detection_filter:track by_src, count 50, seconds 1; sid:1000018; rev:1;)
+alert tcp any any -> 10.0.1.1 80 (msg:"[Priority: 3] Suspicious SYN Activity on FTP Server"; flags:S; detection_filter:track by_src, count 25, seconds 1; sid:1000019; rev:1;)
+
+# TCP Flood Detection on Web Server
+alert tcp any any -> 10.0.3.1 80 (msg:"[Priority: 1] TCP Flood Detected on Web Server"; detection_filter:track by_src, count 1000, seconds 1; sid:1000020; rev:1;)
+alert tcp any any -> 10.0.3.1 80 (msg:"[Priority: 2] Potential TCP Flood Detected on Web Server"; detection_filter:track by_src, count 500, seconds 1; sid:1000021; rev:1;)
+alert tcp any any -> 10.0.3.1 80 (msg:"[Priority: 3] Suspicious TCP Activity on Web Server"; detection_filter:track by_src, count 200, seconds 1; sid:1000022; rev:1;)
+
+# UDP Flood Detection on DNS Server
+alert udp any any -> 10.0.3.3 53 (msg:"[Priority: 1] UDP Flood Detected on DNS Server"; detection_filter:track by_src, count 1000, seconds 1; sid:1000023; rev:1;)
+alert udp any any -> 10.0.3.3 53 (msg:"[Priority: 2] Potential UDP Flood Detected on DNS Server"; detection_filter:track by_src, count 500, seconds 1; sid:1000024; rev:1;)
+alert udp any any -> 10.0.3.3 53 (msg:"[Priority: 3] Suspicious UDP Activity on DNS Server"; detection_filter:track by_src, count 200, seconds 1; sid:1000025; rev:1;)
+
+# Port Scan Detection on FTP Server
+alert tcp any any -> 10.0.1.1 any (msg:"[Priority: 2] TCP Port Scan Detected on FTP Server"; flags:S; detection_filter:track by_src, count 20, seconds 3; sid:1000026; rev:1;)
+alert udp any any -> 10.0.1.1 any (msg:"[Priority: 2] UDP Port Scan Detected on FTP Server"; detection_filter:track by_src, count 20, seconds 3; sid:1000027; rev:1;)
+
+# Potential DDoS Attack Detection on Web Server
+alert ip any any -> 10.0.3.1 any (msg:"[Priority: 1] DDoS Attack Detected on Web Server"; detection_filter:track by_dst, count 5000, seconds 1; sid:1000028; rev:1;)
+alert ip any any -> 10.0.3.1 any (msg:"[Priority: 2] Potential DDoS Attack Detected on Web Server"; detection_filter:track by_dst, count 2500, seconds 1; sid:1000029; rev:1;)
+alert ip any any -> 10.0.3.1 any (msg:"[Priority: 3] Suspicious Activity on Web Server"; detection_filter:track by_dst, count 1000, seconds 1; sid:1000030; rev:1;)
