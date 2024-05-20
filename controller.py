@@ -62,7 +62,7 @@ class ProjectController(app_manager.RyuApp):
 
         self.packet_buffer = {}
 
-        
+        self.snort_port = 3
 
         self.wsgi = kwargs['wsgi']
         self.data = {}
@@ -341,7 +341,7 @@ class ProjectController(app_manager.RyuApp):
         # Drop packets that are not HTTP or DNS
         match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
                                 in_port= 1)
-        actions = []
+        actions = [parser.OFPActionOutput(self.snort_port)]
         self.add_flow(datapath, 400, match, actions)
         #Accept packets that are DNS
         match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
@@ -351,7 +351,8 @@ class ProjectController(app_manager.RyuApp):
                                 ipv4_dst=self.public_ip)
 
         actions = [parser.OFPActionSetField(ipv4_dst=dns_ip),
-                   parser.OFPActionOutput(out_port)]
+                   parser.OFPActionOutput(out_port),
+                   parser.OFPActionOutput(self.snort_port)]
         self.add_flow(datapath, 500, match, actions)
         #Accept Packets that are HTTP
         match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
@@ -361,7 +362,8 @@ class ProjectController(app_manager.RyuApp):
                                 ipv4_dst=self.public_ip)
 
         actions = [parser.OFPActionSetField(ipv4_dst=webserver_ip),
-                   parser.OFPActionOutput(out_port)]
+                   parser.OFPActionOutput(out_port),
+                   parser.OFPActionOutput(self.snort_port)]
         self.add_flow(datapath, 500, match, actions)
         #Replace outgoing IP for DNS
         match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
