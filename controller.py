@@ -56,6 +56,7 @@ class ProjectController(app_manager.RyuApp):
         }
 
         self.public_ip = "80.80.80.80"
+        self.monitoring_ip = "10.0.2.1"
 
         self.router_dpid = "0000000000000002"
         self.firewall_dpid = "0000000000000001"
@@ -80,6 +81,15 @@ class ProjectController(app_manager.RyuApp):
         mapper.connect('test', '/test',
                        controller=CustomController, action='test_function',
                        conditions=dict(method=['GET']))
+        
+        mapper.connect('add_firewall', '/firewall',
+                       controller=CustomController, action='add_firewall',
+                       conditions=dict(method=['POST']))
+        
+        mapper.connect('remove_firewall', '/firewall',
+                       controller=CustomController, action='remove_firewall',
+                       conditions=dict(method=['DELETE']))
+        
         wsgi_app.registory['CustomController'] = self.data
 
 
@@ -143,6 +153,7 @@ class ProjectController(app_manager.RyuApp):
         opcode = arp_pkt.opcode
         if src_ip not in self.arp_table and src_ip not in self.ip_to_mac: #Save IP to ARP Table
             print(f"{src_ip} not saved, saving in ARP table")
+            print(self.arp_table)
             self.arp_table[src_ip] = src_mac
             return
         if dst_ip in self.ip_to_mac and opcode == 1:
@@ -216,6 +227,35 @@ class ProjectController(app_manager.RyuApp):
         datapath.send_msg(out)
         return
     
+    def send_udp_packet(self, dst_ip, payload, parser, datapath, ofproto):
+
+        ip = ipv4.ipv4(dst=dst_ip, src="10.100.100.100", proto=17)
+        udp_pkt = udp.udp(dst_port=5000, src_port=5000, total_length=8+len(payload))
+        pkt = packet.Packet()
+
+
+        eth = ethernet.ethernet(self.arp_table[dst_ip], "00:00:00:00:00:03", ether_types.ETH_TYPE_IP)
+        pkt.add_protocol(eth)
+        pkt.add_protocol(ip)
+        pkt.add_protocol(udp_pkt)
+        pkt.add_protocol(payload)
+
+        pkt.serialize()
+
+        actions = [parser.OFPActionOutput(ofproto.OFPP_FLOOD)]
+
+            # Define the OpenFlow packet out message
+        out = parser.OFPPacketOut(
+            datapath=datapath,
+            buffer_id=ofproto.OFP_NO_BUFFER,
+            in_port=ofproto.OFPP_CONTROLLER,
+            actions=actions,
+            data=pkt.data
+        )
+
+            # Send the packet out message
+        datapath.send_msg(out)
+
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
@@ -245,20 +285,23 @@ class ProjectController(app_manager.RyuApp):
         if dpid == self.router_dpid and eth.ethertype == ether_types.ETH_TYPE_IP:
             ip_pkt = pkt.get_protocol(ipv4.ipv4)
             if ip_pkt.dst == '10.100.100.100':
-                print(f"Controller action received from {ip_pkt.src}")
-                udp_pkt = pkt.get_protocols(udp.udp)[0]
-                udp_payload = pkt.protocols[-1]  # Extract the payload (text string)
-                if isinstance(udp_payload, bytes):
-                    text_string = udp_payload.decode('utf-8')
-                    orders = text_string.split(";")
-                    if orders[0] == "ban":
-                        print(f"Banning IP: {orders[1]}")
-                        attacker_mac = self.arp_table[orders[1]]
-                        match = parser.OFPMatch(eth_src= attacker_mac)
-                        for datapath in self.datapaths.values():
-                            self.add_flow(datapath, 100, match, [])
-                        print(f"User banned, MAC:{attacker_mac}")
+                if ip_pkt.proto == 17:
+                    print(f"Controller action received from {ip_pkt.src}")
+                    udp_pkt = pkt.get_protocols(udp.udp)[0]
+                    udp_payload = pkt.protocols[-1]  # Extract the payload (text string)
+                    if isinstance(udp_payload, bytes):
+                        text_string = udp_payload.decode('utf-8')
+                        orders = text_string.split(";")
+                        if orders[0] == "ban":
+                            print(f"Banning IP: {orders[1]}")
+                            attacker_mac = self.arp_table[orders[1]]
+                            match = parser.OFPMatch(eth_src= attacker_mac)
+                            for datapath in self.datapaths.values():
+                                self.add_flow(datapath, 100, match, [])
+                            print(f"User banned, MAC:{attacker_mac}")
+                            self.send_udp_packet(self.monitoring_ip,b"FTP Bruteforce attempted, a MAC was banned" ,parser,datapath,ofproto)            
                 return
+
             if (ip_pkt.dst in self.arp_table):
                 print(f"IP {ip_pkt.dst} has a ARP table entry")
                 dst_mac = self.arp_table[ip_pkt.dst]
@@ -424,6 +467,49 @@ class CustomController(ControllerBase):
         self.add_flow(datapath=datapath, priority=1000, match=match, buffer_id=[], actions=actions)
         return Response(content_type='application/json',
                         body=b'{"message": "Packets from the webserver and the DNS have been redirected to the honeypot"}')
+            
+    @route('add_firewall', '/firewall', methods=['POST'])
+    def add_firewall(self, req, **kwargs):
+        custom_app = self.custom_app
+        datapath_id = int(req.json["datapath_id"])
+        print(datapath_id)
+        datapath = custom_app.datapaths.get(datapath_id)
+        if datapath is None:
+            return Response(content_type='application/json',
+                            body=b'{"error": "Datapath not found"}',
+                            status=404)
+
+        blocked_ip_src = req.json["ip_src"]
+        blocked_ip_dst = req.json["ip_dst"]
+        priority = int(req.json["priority"])
+        parser = datapath.ofproto_parser
+        print(f"Received REST call for creating firewall from {blocked_ip_src} to {blocked_ip_dst}")
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst = blocked_ip_dst, ipv4_src= blocked_ip_src)
+        ofproto = datapath.ofproto
+        actions = []
+        self.add_flow(datapath=datapath, priority=priority, match=match, buffer_id=[],actions=actions)
+        return Response(content_type='application/json',
+                        body=b'{"message": "Firewall rule created"}')
+    
+    @route('remove_firewall', '/firewall', methods=['DELETE'])
+    def remove_firewall(self, req, **kwargs):
+        custom_app = self.custom_app
+        datapath_id = int(req.json["datapath_id"])
+        print(datapath_id)
+        datapath = custom_app.datapaths.get(datapath_id)
+        if datapath is None:
+            return Response(content_type='application/json',
+                            body=b'{"error": "Datapath not found"}',
+                            status=404)
+
+        blocked_ip_src = req.json["ip_src"]
+        blocked_ip_dst = req.json["ip_dst"]
+        parser = datapath.ofproto_parser
+        print(f"Received REST call for deleting firewall from {blocked_ip_src} to {blocked_ip_dst}")
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst = blocked_ip_dst, ipv4_src= blocked_ip_src)
+        self.delete_flow(datapath=datapath, match=match)
+        return Response(content_type='application/json',
+                        body=b'{"message": "Firewall rule deleted"}')
 
     @route('deactivate-honeypot', '/deactivate-honeypot', methods=['POST'])
     def deactivate_honeypot(self, req, **kwargs):
