@@ -1,0 +1,4 @@
+[[zones]]
+host = 'www.welcometothehoneypot.com'
+type = 'A'
+answer = '80.80.80.80'
