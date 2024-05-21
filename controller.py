@@ -10,16 +10,19 @@ from ryu.lib.packet import arp
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import udp
 from ryu.lib.packet import tcp
+from ryu.lib.packet import icmp
 from ryu.app.wsgi import ControllerBase, route
 from webob import Response
 from ryu.app.wsgi import WSGIApplication
 from ryu.controller import dpset
-
+from ryu.lib import snortlib
+import array
 
 class ProjectController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
     _CONTEXTS = {'dpset': dpset.DPSet,
-                 'wsgi': WSGIApplication}
+                 'wsgi': WSGIApplication,
+                 'snortlib': snortlib.SnortLib}
 
     def __init__(self, *args, **kwargs):
         super(ProjectController, self).__init__(*args, **kwargs)
@@ -63,7 +66,12 @@ class ProjectController(app_manager.RyuApp):
 
         self.packet_buffer = {}
 
+        socket_config = {'unixsock': True}
+        self.snort = kwargs['snortlib']
         self.snort_port = 3
+        self.snort.set_config(socket_config)
+        self.snort.start_socket_server()
+
 
         self.wsgi = kwargs['wsgi']
         self.data = {}
@@ -92,6 +100,16 @@ class ProjectController(app_manager.RyuApp):
         
         wsgi_app.registory['CustomController'] = self.data
 
+    @set_ev_cls(snortlib.EventAlert, MAIN_DISPATCHER)
+    def _dump_alert(self, ev):
+        msg = ev.msg
+        print('alertmsg: %s' % msg.alertmsg[0].decode())
+        alert_str = msg.alertmsg[0].decode()
+        alert_datapath = self.datapaths[4]
+        ofproto = alert_datapath.ofproto
+        parser = alert_datapath.ofproto_parser
+        packet_str = f"Alert From Snort: {alert_str}"
+        self.send_udp_packet(self.monitoring_ip, packet_str.encode("utf-8"), parser, alert_datapath, ofproto) 
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
