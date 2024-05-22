@@ -24,6 +24,11 @@ def udp_server(host, port,):
         if data.decode() != last_alert: 
             print(f"Data: {data.decode()}")
             last_alert = data.decode()
+            if "DDoS Attack Detected on Web Server" in data.decode():
+                content = "ToggleHoneypot"
+                sock.sendto(content.encode(), ("10.100.100.100", listen_port))
+                print("Sent packet to toggle honeypot")
+
 
 if __name__ == "__main__":
 

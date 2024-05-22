@@ -60,6 +60,11 @@ class ProjectController(app_manager.RyuApp):
 
         self.public_ip = "80.80.80.80"
         self.monitoring_ip = "10.0.2.1"
+        self.webserver_ip = "10.0.3.1"
+        self.dns_ip = "10.0.3.3"
+        
+        self.honeypot_ip = '10.0.4.1'
+        self.router_out_port_to_honeypot = 2
 
         self.router_dpid = "0000000000000002"
         self.firewall_dpid = "0000000000000001"
@@ -317,7 +322,13 @@ class ProjectController(app_manager.RyuApp):
                             for datapath in self.datapaths.values():
                                 self.add_flow(datapath, 100, match, [])
                             print(f"User banned, MAC:{attacker_mac}")
-                            self.send_udp_packet(self.monitoring_ip,b"FTP Bruteforce attempted, a MAC was banned" ,parser,datapath,ofproto)            
+                            self.send_udp_packet(self.monitoring_ip,b"FTP Bruteforce attempted, a MAC was banned" ,parser,datapath,ofproto)
+                        if orders[0] == "ToggleHoneypot":
+                            firewall_datapath = self.datapaths[int(self.firewall_dpid)]
+                            firewall_parser = firewall_datapath.ofproto_parser
+                            firewall_ofproto = firewall_datapath.ofproto
+                            self.toggle_honeypot(firewall_parser, firewall_datapath, firewall_ofproto, 2, 1)
+                            print("toggled honeypot")
                 return
 
             if (ip_pkt.dst in self.arp_table):
@@ -345,6 +356,8 @@ class ProjectController(app_manager.RyuApp):
                 print(f"{ip_pkt.dst} not in the arp table ")
                 self.packet_buffer[ip_pkt.dst] = (datapath, in_port, eth, msg.data)
                 print(f"Saved packet in buffer for {ip_pkt.dst}")
+                if ip_pkt.dst == "80.80.80.80":
+                    return
                 self.send_arp_request(datapath, parser, in_port, ip_pkt.dst)
                 return
 
@@ -449,7 +462,15 @@ class ProjectController(app_manager.RyuApp):
         self.add_flow(datapath, 500, match, actions)
         print("Firewall configured")
 
-
+    def toggle_honeypot(self, parser, datapath, ofproto, out_port, in_port):
+        actions = [parser.OFPActionSetField(ipv4_dst=self.honeypot_ip),parser.OFPActionOutput(out_port)]
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst = self.public_ip)
+        self.add_flow(datapath=datapath, priority=5000, match=match, buffer_id=[], actions=actions)
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst = self.public_ip)
+        self.add_flow(datapath=datapath, priority=5000, match=match, buffer_id=[], actions=actions)
+        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src = self.honeypot_ip)
+        actions = [parser.OFPActionSetField(ipv4_src=self.public_ip),parser.OFPActionOutput(in_port)]
+        self.add_flow(datapath=datapath, priority=5000, match=match, buffer_id=[], actions=actions)
 
 
 class CustomController(ControllerBase):
