@@ -151,8 +151,11 @@ class ProjectController(app_manager.RyuApp):
         self.logger.debug('send stats request: %016x', datapath.id)
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-
-        req = parser.OFPFlowStatsRequest(datapath)
+        #DNS
+        req = parser.OFPFlowStatsRequest(datapath, match=parser.OFPMatch(udp_dst=53))
+        datapath.send_msg(req)
+        #HTTP
+        req = parser.OFPFlowStatsRequest(datapath, match=parser.OFPMatch(tcp_dst=80))
         datapath.send_msg(req)
 
         req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
