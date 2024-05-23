@@ -143,40 +143,36 @@ class ProjectController(app_manager.RyuApp):
     
     def _monitor(self):
         while True:
-            for dp in self.datapaths.values():
-                self._request_stats(dp)
+            if int(self.firewall_dpid) in self.datapaths.keys():
+                self._request_stats(self.datapaths[1])
             hub.sleep(10)
     
-    def _request_stats(self, datapath):
-        self.logger.debug('send stats request: %016x', datapath.id)
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-
-        req = parser.OFPFlowStatsRequest(datapath)
-        datapath.send_msg(req)
-
-        req = parser.OFPPortStatsRequest(datapath, 0, ofproto.OFPP_ANY)
-        datapath.send_msg(req)
-
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def _flow_stats_reply_handler(self, ev):
-        FLOW_MSG = "flows,datapath=%x in-port=%x,eth-dst=\"%s\",out-port=%x,packets=%d,bytes=%d %d"
+        FLOW_MSG = "flows,datapath=%x,ip_proto=%x,tcp_dst=%x,packets=%d,bytes=%d %d"
         body = ev.msg.body
         self.logger.info('stats received: %016x', ev.msg.datapath.id)
+        for stat in body:
+            if 'tcp_dst' in stat.match:
+                timestamp = int(datetime.datetime.now().timestamp() * 1000000000)
+                msg = FLOW_MSG % (ev.msg.datapath.id,
+                                stat.match['ip_proto'], stat.match['tcp_dst'],
+                                stat.packet_count, stat.byte_count,
+                                timestamp)
+                self.logger.info(msg)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.sendto(msg.encode(), (self.UDP_IP, self.UDP_PORT))
+            elif 'udp_dst' in stat.match:
+                FLOW_MSG = "flows,datapath=%x,ip_proto=%x,udp_dst=%x,packets=%d,bytes=%d %d"
+                timestamp = int(datetime.datetime.now().timestamp() * 1000000000)
+                msg = FLOW_MSG % (ev.msg.datapath.id,
+                                stat.match['ip_proto'], stat.match['udp_dst'],
+                                stat.packet_count, stat.byte_count,
+                                timestamp)
+                self.logger.info(msg)
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.sendto(msg.encode(), (self.UDP_IP, self.UDP_PORT))
 
-        for stat in sorted([flow for flow in body if flow.priority == 1],
-                           key=lambda flow: (flow.match['in_port'],
-                                             flow.match['eth_dst'])):
-            timestamp = int(datetime.datetime.now().timestamp() * 1000000000)
-            msg = FLOW_MSG % (ev.msg.datapath.id,
-                             stat.match['in_port'], stat.match['eth_dst'],
-                             stat.instructions[0].actions[0].port,
-                             stat.packet_count, stat.byte_count,
-                             timestamp)
-            self.logger.info(msg)
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.sendto(msg.encode(), (self.UDP_IP, self.UDP_PORT))
-            
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
         PORT_MSG = "ports,datapath=%x,port=%x rx-pkts=%d,rx-bytes=%d,rx-error=%d,tx-pkts=%d,tx-bytes=%d,tx-error=%d %d"
