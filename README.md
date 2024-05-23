@@ -14,26 +14,6 @@ It's recommended to open a Xterm in h4 (Monitoring App) and execute
 ```bash
   python3 monitoring/monitoring_app.py
 ```
-    def _request_stats(self, datapath):
-        self.logger.debug('send stats request: %016x', datapath.id)
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        in_port = 1
-        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
-                                ip_proto=17,
-                                udp_dst=53,
-                                in_port=in_port,
-                                ipv4_dst=self.public_ip)
-        req = parser.OFPFlowStatsRequest(datapath, match=match)
-        datapath.send_msg(req)
-        match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP,
-                                ip_proto=6,
-                                tcp_dst=80,
-                                in_port=in_port,
-                                ipv4_dst=self.public_ip)
-        req = parser.OFPFlowStatsRequest(datapath, match=match)
-        datapath.send_msg(req)
-
 
 ## Snort
 
