@@ -83,4 +83,8 @@ Open h1, and execute
 ```bash
 python3 attacks/tcp_dos.py
 ```
+or 
+```bash
+python3 attacks/dns_dos.py
+```
 If traffic flow is enough, Snort will be toggled and all traffic will be redirected to the honeypot server.
