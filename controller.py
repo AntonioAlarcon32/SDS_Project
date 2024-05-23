@@ -169,12 +169,12 @@ class ProjectController(app_manager.RyuApp):
     
     @set_ev_cls(ofp_event.EventOFPFlowStatsReply, MAIN_DISPATCHER)
     def _flow_stats_reply_handler(self, ev):
-        FLOW_MSG = "flows,datapath=%x,ip_proto=%x,tcp_dst=%x,packets=%d,bytes=%d %d"
+        FLOW_MSG = "flows,datapath=%x,ip_proto=%d,tcp_dst=%d packets=%d,bytes=%d %d"
         body = ev.msg.body
         self.logger.info('stats received: %016x', ev.msg.datapath.id)
         for stat in body:
+            timestamp = int(datetime.datetime.now().timestamp() * 1000000000)
             if 'tcp_dst' in stat.match:
-                timestamp = int(datetime.datetime.now().timestamp() * 1000000000)
                 msg = FLOW_MSG % (ev.msg.datapath.id,
                                 stat.match['ip_proto'], stat.match['tcp_dst'],
                                 stat.packet_count, stat.byte_count,
@@ -183,8 +183,7 @@ class ProjectController(app_manager.RyuApp):
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.sendto(msg.encode(), (self.UDP_IP, self.UDP_PORT))
             elif 'udp_dst' in stat.match:
-                FLOW_MSG = "flows,datapath=%x,ip_proto=%x,udp_dst=%x,packets=%d,bytes=%d %d"
-                timestamp = int(datetime.datetime.now().timestamp() * 1000000000)
+                FLOW_MSG = "flows,datapath=%x,ip_proto=%d,udp_dst=%d packets=%d,bytes=%d %d"
                 msg = FLOW_MSG % (ev.msg.datapath.id,
                                 stat.match['ip_proto'], stat.match['udp_dst'],
                                 stat.packet_count, stat.byte_count,
@@ -192,6 +191,7 @@ class ProjectController(app_manager.RyuApp):
                 self.logger.info(msg)
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 sock.sendto(msg.encode(), (self.UDP_IP, self.UDP_PORT))
+
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def _port_stats_reply_handler(self, ev):
