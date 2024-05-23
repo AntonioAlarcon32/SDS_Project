@@ -34,6 +34,17 @@ sudo snort -i s1-snort -c /etc/snort/snort.conf
   ./configure_snort_interface.sh
 ```
 
+## Monitoring
+
+In the mininet shell, write 
+```bash
+xterm h4
+```
+Then, write this command in the new shell to start the monitoring service
+```bash
+python3 monitoring/monitoring_app.py
+```
+
 ## Telegraf & Grafana
 
 ```bash
